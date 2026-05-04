@@ -343,8 +343,8 @@ const previewRenderer = new THREE.WebGLRenderer({ canvas: previewCanvas, antiali
 previewRenderer.setPixelRatio(1); // strict 64x64
 previewRenderer.shadowMap.enabled = true;
 previewRenderer.shadowMap.type = THREE.BasicShadowMap;
-  previewRenderer.setSize(64, 64, false);
-  previewRenderer.localClippingEnabled = false;
+previewRenderer.setSize(64, 64, false);
+previewRenderer.localClippingEnabled = false;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x050507);
@@ -409,9 +409,9 @@ function makeFrameGroup() {
   scene.add(g);
   return g;
 }
-  const currentRigGroup = makeFrameGroup();   // primitives for current frame (lit, shadowed)
-  const currentOverlayGroup = makeFrameGroup(); // editor handles
-  const ghostGroups = [makeFrameGroup(), makeFrameGroup()]; // up to 2 ghosts (prev, next)
+const currentRigGroup = makeFrameGroup();   // primitives for current frame (lit, shadowed)
+const currentOverlayGroup = makeFrameGroup(); // editor handles
+const ghostGroups = [makeFrameGroup(), makeFrameGroup()]; // up to 2 ghosts (prev, next)
 
   // Preview only renders layer 0; main viewport renders all layers
   currentOverlayGroup.layers.set(1);
