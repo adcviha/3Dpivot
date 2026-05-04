@@ -248,6 +248,7 @@
             list.innerHTML = frames.map((f, i) => 
                 `<div class="frame-item ${i === currentFrame ? 'active' : ''}" onclick="selectFrame(${i})">
                     Frame ${i + 1}
+                    <button class="delete-frame-btn ml-2 text-red-400 hover:text-red-200" onclick="deleteFrame(${i}); event.stopPropagation();">×</button>
                 </div>`
             ).join('');
         }
@@ -268,6 +269,18 @@
             currentFrame = newIdx;
             document.getElementById('frameNum').textContent = newIdx + 1;
             updateFrameList();
+        }
+
+        function deleteFrame(index) {
+            if (frames.length <= 1) {
+                // Prevent deleting the last frame
+                return;
+            }
+            frames.splice(index, 1);
+            if (currentFrame >= frames.length) {
+                currentFrame = frames.length - 1;
+            }
+            selectFrame(currentFrame);
         }
 
         function clearAll() {
