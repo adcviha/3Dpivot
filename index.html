@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Pivot - Sprite Creation Tool</title>
+    <title>3D Pivot v1.0 - Sprite Creation Tool</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -48,7 +48,7 @@
         <div class="panel w-72 flex flex-col" style="min-width: 288px;">
             <!-- Header -->
             <div class="p-4 border-b border-[#404040]">
-                <h1 class="text-lg font-bold text-[#c084fc]">3D Pivot</h1>
+                <h1 class="text-lg font-bold text-[#c084fc]">3D Pivot v1.0</h1>
                 <p class="text-xs text-gray-400 mt-1">2D Bone Chain in 3D Viewport</p>
             </div>
 
@@ -58,15 +58,38 @@
                 
                 <div class="mb-4">
                     <div class="flex justify-between text-sm mb-1">
-                        <span>Bone: Root</span>
+                        <span>Bone: <span id="boneName">Root</span></span>
                         <span id="angleValue" class="text-[#c084fc] font-mono">0°</span>
                     </div>
                     <input type="range" id="boneSlider" min="-180" max="180" value="0" step="1">
                 </div>
 
+                <div class="mb-4">
+                    <div class="flex justify-between text-sm mb-1">
+                        <span>Origin X</span>
+                        <span id="originXValue" class="text-[#c084fc] font-mono">0</span>
+                    </div>
+                    <input type="range" id="originXSlider" min="-200" max="200" value="0" step="1">
+                </div>
+
+                <div class="mb-4">
+                    <div class="flex justify-between text-sm mb-1">
+                        <span>Origin Y</span>
+                        <span id="originYValue" class="text-[#c084fc] font-mono">0</span>
+                    </div>
+                    <input type="range" id="originYSlider" min="-200" max="200" value="0" step="1">
+                </div>
+
                 <div class="text-xs text-gray-400 mb-2">
                     <span>Length: <span id="boneLength">100</span>px</span><br>
                     FK Only - Forward Kinematics
+                </div>
+
+                <button class="btn w-full mb-2" onclick="addBone()">+ Add Bone</button>
+                <button class="btn w-full mb-2" onclick="deleteBone()" id="deleteBoneBtn" disabled>Delete Bone</button>
+                
+                <div class="text-xs text-gray-500 mt-2">
+                    <span>Bones: <span id="boneCount">1</span></span>
                 </div>
             </div>
 
@@ -105,7 +128,7 @@
         <div class="flex-1 relative">
             <canvas id="viewport"></canvas>
             <div class="absolute top-4 left-4 bg-black/50 px-3 py-2 rounded text-xs" id="info">
-                Frame: <span id="frameNum">1</span> | Bones: 1
+                Frame: <span id="frameNum">1</span> | Bones: <span id="boneCountInfo">1</span>
             </div>
         </div>
     </div>
@@ -133,18 +156,24 @@
                 this.worldAngle = 0;
                 this.worldX = 0;
                 this.worldY = 0;
+                this.baseX = 0;
+                this.baseY = 0;
                 this.mesh = null;
             }
 
-            updateFK() {
+            updateFK(rootOffsetX = 0, rootOffsetY = 0) {
                 if (this.parent) {
                     this.worldAngle = this.parent.worldAngle + this.localAngle;
-                    this.worldX = this.parent.worldX + Math.cos(this.worldAngle * Math.PI / 180) * this.length;
-                    this.worldY = this.parent.worldY + Math.sin(this.worldAngle * Math.PI / 180) * this.length;
+                    this.baseX = this.parent.worldX;
+                    this.baseY = this.parent.worldY;
+                    this.worldX = this.baseX + Math.cos(this.worldAngle * Math.PI / 180) * this.length;
+                    this.worldY = this.baseY + Math.sin(this.worldAngle * Math.PI / 180) * this.length;
                 } else {
                     this.worldAngle = this.localAngle;
-                    this.worldX = Math.cos(this.worldAngle * Math.PI / 180) * this.length;
-                    this.worldY = Math.sin(this.worldAngle * Math.PI / 180) * this.length;
+                    this.baseX = rootOffsetX;
+                    this.baseY = rootOffsetY;
+                    this.worldX = this.baseX + Math.cos(this.worldAngle * Math.PI / 180) * this.length;
+                    this.worldY = this.baseY + Math.sin(this.worldAngle * Math.PI / 180) * this.length;
                 }
             }
         }
@@ -181,25 +210,86 @@
         const ambientLight = new THREE.AmbientLight(0x404040, 0.4);
         scene.add(ambientLight);
 
-        // === Create Root Bone ===
-        const rootBone = new Bone('root', 100, null);
-        rootBone.localAngle = 0;
-        rootBone.worldX = 0;
-        rootBone.worldY = 0;
+        // === Bone Chain System ===
+        const bones = [];
+        let selectedBoneIndex = 0;
+        let rootOffsetX = 0;
+        let rootOffsetY = 0;
 
-        const boneGeometry = new THREE.BoxGeometry(8, 100, 8);
-        const boneMaterial = new THREE.MeshStandardMaterial({
-            color: 0x4f46e5,
-            metalness: 0.3,
-            roughness: 0.4
-        });
-        const boneMesh = new THREE.Mesh(boneGeometry, boneMaterial);
-        boneMesh.castShadow = true;
-        boneMesh.receiveShadow = true;
-        boneMesh.geometry.translate(0, 50, 0);
-        boneMesh.position.set(0, 0, 0);
-        scene.add(boneMesh);
-        rootBone.mesh = boneMesh;
+        function createBoneMesh(length) {
+            const geometry = new THREE.BoxGeometry(8, length, 8);
+            const material = new THREE.MeshStandardMaterial({
+                color: 0x4f46e5,
+                metalness: 0.3,
+                roughness: 0.4
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            mesh.geometry.translate(0, length / 2, 0);
+            return mesh;
+        }
+
+        function initBones() {
+            bones.length = 0;
+            selectedBoneIndex = 0;
+            
+            const rootBone = new Bone('root', 100, null);
+            rootBone.localAngle = 0;
+            rootBone.worldX = 0;
+            rootBone.worldY = 0;
+            rootBone.mesh = createBoneMesh(100);
+            scene.add(rootBone.mesh);
+            bones.push(rootBone);
+            
+            updateBoneList();
+        }
+
+        function updateBoneList() {
+            document.getElementById('boneCount').textContent = bones.length;
+            document.getElementById('boneCountInfo').textContent = bones.length;
+            updateBoneSelector();
+        }
+
+        function updateBoneSelector() {
+            const boneNameEl = document.getElementById('boneName');
+            const selectedBone = bones[selectedBoneIndex];
+            boneNameEl.textContent = selectedBone.name;
+            
+            const deleteBtn = document.getElementById('deleteBoneBtn');
+            deleteBtn.disabled = bones.length <= 1;
+        }
+
+        function addBone() {
+            const parentBone = bones[bones.length - 1];
+            const newBone = new Bone('bone_' + bones.length, 100, parentBone);
+            newBone.localAngle = 0;
+            newBone.mesh = createBoneMesh(100);
+            scene.add(newBone.mesh);
+            bones.push(newBone);
+            
+            selectedBoneIndex = bones.length - 1;
+            updateBoneList();
+            updateSliderForSelectedBone();
+            updateFrameListData();
+        }
+
+        function deleteBone() {
+            if (bones.length <= 1) return;
+            
+            const removedBone = bones.pop();
+            scene.remove(removedBone.mesh);
+            
+            if (selectedBoneIndex >= bones.length) {
+                selectedBoneIndex = bones.length - 1;
+            }
+            updateBoneList();
+            updateSliderForSelectedBone();
+            updateFrameListData();
+        }
+
+        // === Create Root Bone ===
+        initBones();
 
         const jointGeometry = new THREE.SphereGeometry(10, 16, 16);
         const jointMaterial = new THREE.MeshStandardMaterial({ color: 0xc084fc });
@@ -240,8 +330,30 @@
         }
 
         // === Frame System ===
-        let frames = [{ id: 1, bones: [{ name: 'root', angle: 0 }] }];
+        let frames = [{ id: 1, bones: [{ name: 'root', angle: 0 }], originX: 0, originY: 0 }];
         let currentFrame = 0;
+
+        function serializeBones() {
+            return bones.map(bone => ({
+                name: bone.name,
+                angle: bone.localAngle,
+                length: bone.length
+            }));
+        }
+
+        function deserializeBones(boneData) {
+            bones.length = 0;
+            boneData.forEach((data, i) => {
+                const parent = i === 0 ? null : bones[i - 1];
+                const bone = new Bone(data.name || ('bone_' + i), data.length || 100, parent);
+                bone.localAngle = data.angle || 0;
+                bone.mesh = createBoneMesh(bone.length);
+                scene.add(bone.mesh);
+                bones.push(bone);
+            });
+            selectedBoneIndex = 0;
+            updateBoneList();
+        }
 
         function updateFrameList() {
             const list = document.getElementById('frameList');
@@ -253,19 +365,43 @@
             ).join('');
         }
 
+        function updateFrameListData() {
+            if (frames[currentFrame]) {
+                frames[currentFrame].bones = serializeBones();
+                frames[currentFrame].originX = rootOffsetX;
+                frames[currentFrame].originY = rootOffsetY;
+            }
+        }
+
         function selectFrame(idx) {
             currentFrame = idx;
             const frame = frames[idx];
-            rootBone.localAngle = frame.bones[0].angle;
-            document.getElementById('boneSlider').value = frame.bones[0].angle;
-            document.getElementById('angleValue').textContent = frame.bones[0].angle + '°';
+            
+            const boneData = frame.bones || [{ name: 'root', angle: 0 }];
+            deserializeBones(boneData);
+            
+            rootOffsetX = frame.originX || 0;
+            rootOffsetY = frame.originY || 0;
+            document.getElementById('originXSlider').value = rootOffsetX;
+            document.getElementById('originYSlider').value = rootOffsetY;
+            document.getElementById('originXValue').textContent = rootOffsetX;
+            document.getElementById('originYValue').textContent = rootOffsetY;
+            
+            selectedBoneIndex = 0;
+            updateSliderForSelectedBone();
             document.getElementById('frameNum').textContent = idx + 1;
             updateFrameList();
         }
 
         function addFrame() {
             const newIdx = frames.length;
-            frames.push({ id: newIdx + 1, bones: [{ name: 'root', angle: rootBone.localAngle }] });
+            updateFrameListData();
+            frames.push({ 
+                id: newIdx + 1, 
+                bones: serializeBones(),
+                originX: rootOffsetX,
+                originY: rootOffsetY
+            });
             currentFrame = newIdx;
             document.getElementById('frameNum').textContent = newIdx + 1;
             updateFrameList();
@@ -273,7 +409,6 @@
 
         function deleteFrame(index) {
             if (frames.length <= 1) {
-                // Prevent deleting the last frame
                 return;
             }
             frames.splice(index, 1);
@@ -284,36 +419,80 @@
         }
 
         function clearAll() {
-            frames = [{ id: 1, bones: [{ name: 'root', angle: 0 }] }];
+            bones.forEach(b => scene.remove(b.mesh));
+            initBones();
+            rootOffsetX = 0;
+            rootOffsetY = 0;
+            document.getElementById('originXSlider').value = 0;
+            document.getElementById('originYSlider').value = 0;
+            document.getElementById('originXValue').textContent = '0';
+            document.getElementById('originYValue').textContent = '0';
+            frames = [{ id: 1, bones: [{ name: 'root', angle: 0 }], originX: 0, originY: 0 }];
             currentFrame = 0;
-            rootBone.localAngle = 0;
-            document.getElementById('boneSlider').value = 0;
-            document.getElementById('angleValue').textContent = '0°';
+            selectedBoneIndex = 0;
+            updateSliderForSelectedBone();
             document.getElementById('frameNum').textContent = '1';
             updateFrameList();
+        }
+
+        function updateSliderForSelectedBone() {
+            const bone = bones[selectedBoneIndex];
+            if (bone) {
+                document.getElementById('boneSlider').value = bone.localAngle;
+                document.getElementById('angleValue').textContent = bone.localAngle + '°';
+            }
         }
 
         // === Bone Rotation Handler ===
         const slider = document.getElementById('boneSlider');
         slider.addEventListener('input', (e) => {
             const angle = parseInt(e.target.value);
-            rootBone.localAngle = angle;
+            const bone = bones[selectedBoneIndex];
+            bone.localAngle = angle;
             document.getElementById('angleValue').textContent = angle + '°';
-            frames[currentFrame].bones[0].angle = angle;
+            if (frames[currentFrame]) {
+                frames[currentFrame].bones[selectedBoneIndex].angle = angle;
+            }
+        });
+
+        // === Origin Position Handlers ===
+        const originXSlider = document.getElementById('originXSlider');
+        originXSlider.addEventListener('input', (e) => {
+            rootOffsetX = parseInt(e.target.value);
+            document.getElementById('originXValue').textContent = rootOffsetX;
+            if (frames[currentFrame]) {
+                frames[currentFrame].originX = rootOffsetX;
+            }
+        });
+
+        const originYSlider = document.getElementById('originYSlider');
+        originYSlider.addEventListener('input', (e) => {
+            rootOffsetY = parseInt(e.target.value);
+            document.getElementById('originYValue').textContent = rootOffsetY;
+            if (frames[currentFrame]) {
+                frames[currentFrame].originY = rootOffsetY;
+            }
         });
 
         // === Animation Loop ===
         function animate() {
             requestAnimationFrame(animate);
 
-            rootBone.updateFK();
+            bones.forEach(bone => bone.updateFK(rootOffsetX, rootOffsetY));
 
-            const angleRad = rootBone.localAngle * Math.PI / 180;
-            
-            rootBone.mesh.rotation.z = angleRad;
-            rootBone.mesh.position.set(0, 0, 0);
-            
-            endJointMesh.position.set(rootBone.worldX, rootBone.worldY, 0);
+            for (let i = 0; i < bones.length; i++) {
+                const bone = bones[i];
+                const angleRad = bone.worldAngle * Math.PI / 180;
+                
+                bone.mesh.position.set(bone.baseX, bone.baseY, 0);
+                bone.mesh.rotation.z = angleRad;
+            }
+
+            endJointMesh.position.set(
+                bones[bones.length - 1].worldX,
+                bones[bones.length - 1].worldY,
+                0
+            );
 
             renderer.render(scene, camera);
         }
@@ -331,10 +510,13 @@
             exportScene.add(exportPointLight);
             exportScene.add(exportAmbientLight);
             
-            const exportBoneMesh = boneMesh.clone();
+            bones.forEach(bone => {
+                const exportBoneMesh = bone.mesh.clone();
+                exportScene.add(exportBoneMesh);
+            });
+            
             const exportJointMesh = jointMesh.clone();
             const exportEndJointMesh = endJointMesh.clone();
-            exportScene.add(exportBoneMesh);
             exportScene.add(exportJointMesh);
             exportScene.add(exportEndJointMesh);
             
@@ -361,9 +543,12 @@
 
         window.setView = setView;
         window.addFrame = addFrame;
+        window.deleteFrame = deleteFrame;
         window.clearAll = clearAll;
         window.selectFrame = selectFrame;
         window.exportPNG = exportPNG;
+        window.addBone = addBone;
+        window.deleteBone = deleteBone;
 
         window.addEventListener('resize', () => {
             const w = container.clientWidth;
