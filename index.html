@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Pivot - Sprite Creation Tool</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, -apple-system, sans-serif; background: #1a1a1a; color: #e5e5e5; overflow: hidden; }
+        input[type="range"] { 
+            -webkit-appearance: none; 
+            appearance: none;
+            background: #333; 
+            height: 6px; 
+            border-radius: 3px;
+            outline: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px; height: 16px; 
+            background: #4f46e5; 
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid #6366f1;
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 16px; height: 16px; 
+            background: #4f46e5; 
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid #6366f1;
+        }
+        .panel { background: #262626; border: 1px solid #404040; }
+        .btn { background: #4f46e5; color: white; padding: 8px 16px; border-radius: 6px; cursor: pointer; transition: background 0.2s; border: none; font-size: 14px; }
+        .btn:hover { background: #6366f1; }
+        .btn:active { background: #4338ca; }
+        .frame-item { padding: 8px 12px; border-bottom: 1px solid #404040; cursor: pointer; transition: background 0.15s; }
+        .frame-item:hover { background: #383838; }
+        .frame-item.active { background: #4f46e5; }
+        #viewport { display: block; }
+    </style>
+</head>
+<body>
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <div class="panel w-72 flex flex-col" style="min-width: 288px;">
+            <!-- Header -->
+            <div class="p-4 border-b border-[#404040]">
+                <h1 class="text-lg font-bold text-[#c084fc]">3D Pivot</h1>
+                <p class="text-xs text-gray-400 mt-1">2D Bone Chain in 3D Viewport</p>
+            </div>
+
+            <!-- Rig Controls -->
+            <div class="p-4 border-b border-[#404040]">
+                <h2 class="text-sm font-semibold mb-3 text-[#a5b4fc]">Rig Controls</h2>
+                
+                <div class="mb-4">
+                    <div class="flex justify-between text-sm mb-1">
+                        <span>Bone: Root</span>
+                        <span id="angleValue" class="text-[#c084fc] font-mono">0°</span>
+                    </div>
+                    <input type="range" id="boneSlider" min="-180" max="180" value="0" step="1">
+                </div>
+
+                <div class="text-xs text-gray-400 mb-2">
+                    <span>Length: <span id="boneLength">100</span>px</span><br>
+                    FK Only - Forward Kinematics
+                </div>
+            </div>
+
+            <!-- Viewport Controls -->
+            <div class="p-4 border-b border-[#404040]">
+                <h2 class="text-sm font-semibold mb-3 text-[#a5b4fc]">Viewport</h2>
+                <div class="grid grid-cols-3 gap-2">
+                    <button class="btn text-xs py-2" onclick="setView('front')">Front</button>
+                    <button class="btn text-xs py-2" onclick="setView('back')">Back</button>
+                    <button class="btn text-xs py-2" onclick="setView('left')">Left</button>
+                    <button class="btn text-xs py-2" onclick="setView('right')">Right</button>
+                    <button class="btn text-xs py-2" onclick="setView('top')">Top</button>
+                    <button class="btn text-xs py-2" onclick="setView('bottom')">Bottom</button>
+                </div>
+                <p class="text-xs text-gray-500 mt-2 text-center">Locked Orthographic</p>
+            </div>
+
+            <!-- Frame Management -->
+            <div class="flex-1 flex flex-col min-h-0">
+                <div class="p-4 border-b border-[#404040] flex justify-between items-center">
+                    <h2 class="text-sm font-semibold text-[#a5b4fc]">Frames</h2>
+                    <button class="btn text-xs py-1 px-3" onclick="addFrame()">+ Add</button>
+                </div>
+                <div id="frameList" class="flex-1 overflow-y-auto">
+                </div>
+            </div>
+
+            <!-- Export -->
+            <div class="p-4 border-t border-[#404040]">
+                <button class="btn w-full mb-2" onclick="exportPNG()">Export 64x64 PNG</button>
+                <button class="btn w-full bg-gray-600 hover:bg-gray-500" onclick="clearAll()">Clear All</button>
+            </div>
+        </div>
+
+        <!-- Viewport -->
+        <div class="flex-1 relative">
+            <canvas id="viewport"></canvas>
+            <div class="absolute top-4 left-4 bg-black/50 px-3 py-2 rounded text-xs" id="info">
+                Frame: <span id="frameNum">1</span> | Bones: 1
+            </div>
+        </div>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // === 2D Bone System ===
+        class Bone {
+            constructor(name, length, parent = null) {
+                this.name = name;
+                this.length = length;
+                this.parent = parent;
+                this.localAngle = 0;
+                this.worldAngle = 0;
+                this.worldX = 0;
+                this.worldY = 0;
+                this.mesh = null;
+            }
+
+            updateFK() {
+                if (this.parent) {
+                    this.worldAngle = this.parent.worldAngle + this.localAngle;
+                    this.worldX = this.parent.worldX + Math.cos(this.worldAngle * Math.PI / 180) * this.length;
+                    this.worldY = this.parent.worldY + Math.sin(this.worldAngle * Math.PI / 180) * this.length;
+                } else {
+                    this.worldAngle = this.localAngle;
+                    this.worldX = Math.cos(this.worldAngle * Math.PI / 180) * this.length;
+                    this.worldY = Math.sin(this.worldAngle * Math.PI / 180) * this.length;
+                }
+            }
+        }
+
+        // === Scene Setup ===
+        const canvas = document.getElementById('viewport');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1e1e1e);
+
+        const container = canvas.parentElement;
+        
+        const aspect = container.clientWidth / container.clientHeight;
+        const viewSize = 300;
+        const camera = new THREE.OrthographicCamera(
+            -viewSize * aspect / 2, viewSize * aspect / 2,
+            viewSize / 2, -viewSize / 2,
+            1, 10000
+        );
+
+        const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+        // === Lighting ===
+        const pointLight = new THREE.PointLight(0xffffff, 1.2, 2000);
+        pointLight.position.set(200, 200, 300);
+        pointLight.castShadow = true;
+        pointLight.shadow.mapSize.width = 1024;
+        pointLight.shadow.mapSize.height = 1024;
+        scene.add(pointLight);
+
+        const ambientLight = new THREE.AmbientLight(0x404040, 0.4);
+        scene.add(ambientLight);
+
+        // === Create Root Bone ===
+        const rootBone = new Bone('root', 100, null);
+        rootBone.localAngle = 0;
+        rootBone.worldX = 0;
+        rootBone.worldY = 0;
+
+        const boneGeometry = new THREE.BoxGeometry(8, 100, 8);
+        const boneMaterial = new THREE.MeshStandardMaterial({
+            color: 0x4f46e5,
+            metalness: 0.3,
+            roughness: 0.4
+        });
+        const boneMesh = new THREE.Mesh(boneGeometry, boneMaterial);
+        boneMesh.castShadow = true;
+        boneMesh.receiveShadow = true;
+        boneMesh.geometry.translate(0, 50, 0);
+        boneMesh.position.set(0, 0, 0);
+        scene.add(boneMesh);
+        rootBone.mesh = boneMesh;
+
+        const jointGeometry = new THREE.SphereGeometry(10, 16, 16);
+        const jointMaterial = new THREE.MeshStandardMaterial({ color: 0xc084fc });
+        const jointMesh = new THREE.Mesh(jointGeometry, jointMaterial);
+        jointMesh.castShadow = true;
+        jointMesh.position.set(0, 0, 0);
+        scene.add(jointMesh);
+
+        const endJointGeometry = new THREE.SphereGeometry(8, 12, 12);
+        const endJointMaterial = new THREE.MeshStandardMaterial({ color: 0xf472b6 });
+        const endJointMesh = new THREE.Mesh(endJointGeometry, endJointMaterial);
+        endJointMesh.castShadow = true;
+        scene.add(endJointMesh);
+
+        const gridHelper = new THREE.GridHelper(800, 20, 0x404040, 0x303030);
+        gridHelper.rotation.x = Math.PI / 2;
+        gridHelper.position.z = -50;
+        scene.add(gridHelper);
+
+        // === Camera Views ===
+        const views = {
+            front: () => { camera.position.set(0, 0, 500); camera.lookAt(0, 0, 0); },
+            back: () => { camera.position.set(0, 0, -500); camera.lookAt(0, 0, 0); },
+            left: () => { camera.position.set(-500, 0, 0); camera.lookAt(0, 0, 0); },
+            right: () => { camera.position.set(500, 0, 0); camera.lookAt(0, 0, 0); },
+            top: () => { camera.position.set(0, 500, 0); camera.lookAt(0, 0, 0); camera.up.set(0, 0, -1); },
+            bottom: () => { camera.position.set(0, -500, 0); camera.lookAt(0, 0, 0); camera.up.set(0, 0, 1); }
+        };
+
+        views.front();
+        camera.up.set(0, 1, 0);
+
+        function setView(dir) {
+            views[dir]();
+            camera.up.set(0, 1, 0);
+            if (dir === 'top') camera.up.set(0, 0, -1);
+            if (dir === 'bottom') camera.up.set(0, 0, 1);
+        }
+
+        // === Frame System ===
+        let frames = [{ id: 1, bones: [{ name: 'root', angle: 0 }] }];
+        let currentFrame = 0;
+
+        function updateFrameList() {
+            const list = document.getElementById('frameList');
+            list.innerHTML = frames.map((f, i) => 
+                `<div class="frame-item ${i === currentFrame ? 'active' : ''}" onclick="selectFrame(${i})">
+                    Frame ${i + 1}
+                </div>`
+            ).join('');
+        }
+
+        function selectFrame(idx) {
+            currentFrame = idx;
+            const frame = frames[idx];
+            rootBone.localAngle = frame.bones[0].angle;
+            document.getElementById('boneSlider').value = frame.bones[0].angle;
+            document.getElementById('angleValue').textContent = frame.bones[0].angle + '°';
+            document.getElementById('frameNum').textContent = idx + 1;
+            updateFrameList();
+        }
+
+        function addFrame() {
+            const newIdx = frames.length;
+            frames.push({ id: newIdx + 1, bones: [{ name: 'root', angle: rootBone.localAngle }] });
+            currentFrame = newIdx;
+            document.getElementById('frameNum').textContent = newIdx + 1;
+            updateFrameList();
+        }
+
+        function clearAll() {
+            frames = [{ id: 1, bones: [{ name: 'root', angle: 0 }] }];
+            currentFrame = 0;
+            rootBone.localAngle = 0;
+            document.getElementById('boneSlider').value = 0;
+            document.getElementById('angleValue').textContent = '0°';
+            document.getElementById('frameNum').textContent = '1';
+            updateFrameList();
+        }
+
+        // === Bone Rotation Handler ===
+        const slider = document.getElementById('boneSlider');
+        slider.addEventListener('input', (e) => {
+            const angle = parseInt(e.target.value);
+            rootBone.localAngle = angle;
+            document.getElementById('angleValue').textContent = angle + '°';
+            frames[currentFrame].bones[0].angle = angle;
+        });
+
+        // === Animation Loop ===
+        function animate() {
+            requestAnimationFrame(animate);
+
+            rootBone.updateFK();
+
+            const angleRad = rootBone.localAngle * Math.PI / 180;
+            
+            rootBone.mesh.rotation.z = angleRad;
+            rootBone.mesh.position.set(0, 0, 0);
+            
+            endJointMesh.position.set(rootBone.worldX, rootBone.worldY, 0);
+
+            renderer.render(scene, camera);
+        }
+
+        // === Export PNG ===
+        function exportPNG() {
+            const exportRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
+            exportRenderer.setSize(64, 64);
+            
+            const exportScene = new THREE.Scene();
+            exportScene.background = null;
+            
+            const exportPointLight = pointLight.clone();
+            const exportAmbientLight = ambientLight.clone();
+            exportScene.add(exportPointLight);
+            exportScene.add(exportAmbientLight);
+            
+            const exportBoneMesh = boneMesh.clone();
+            const exportJointMesh = jointMesh.clone();
+            const exportEndJointMesh = endJointMesh.clone();
+            exportScene.add(exportBoneMesh);
+            exportScene.add(exportJointMesh);
+            exportScene.add(exportEndJointMesh);
+            
+            const exportCamera = new THREE.OrthographicCamera(
+                -viewSize * aspect / 2, viewSize * aspect / 2,
+                viewSize / 2, -viewSize / 2,
+                1, 10000
+            );
+            exportCamera.position.copy(camera.position);
+            exportCamera.quaternion.copy(camera.quaternion);
+            exportCamera.up.copy(camera.up);
+            
+            exportRenderer.render(exportScene, exportCamera);
+            
+            exportRenderer.domElement.toBlob((blob) => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'frame_' + (currentFrame + 1) + '_64x64.png';
+                a.click();
+                URL.revokeObjectURL(url);
+            }, 'image/png');
+        }
+
+        window.setView = setView;
+        window.addFrame = addFrame;
+        window.clearAll = clearAll;
+        window.selectFrame = selectFrame;
+        window.exportPNG = exportPNG;
+
+        window.addEventListener('resize', () => {
+            const w = container.clientWidth;
+            const h = container.clientHeight;
+            camera.left = -viewSize * w / h / 2;
+            camera.right = viewSize * w / h / 2;
+            camera.top = viewSize / 2;
+            camera.bottom = -viewSize / 2;
+            camera.updateProjectionMatrix();
+            renderer.setSize(w, h);
+        });
+
+        updateFrameList();
+        animate();
+    </script>
+</body>
+</html>
