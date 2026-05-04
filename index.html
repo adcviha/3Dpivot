@@ -388,11 +388,13 @@ scene.add(lightsYawGroup);
 const keyLight = new THREE.PointLight(0xffe4c0, 1.9, 60, 1.2);
 keyLight.position.set(3.5, 4.5, 5.5);
 keyLight.castShadow = true;
-keyLight.shadow.mapSize.set(1024, 1024);
-keyLight.shadow.bias = -0.0035;
-keyLight.shadow.normalBias = 0.02;
+keyLight.shadow.mapSize.set(2048, 2048);
 keyLight.shadow.camera.near = 0.1;
-keyLight.shadow.camera.far = 20;
+keyLight.shadow.camera.far = 100;
+keyLight.shadow.camera.left = -50;
+keyLight.shadow.camera.right = 50;
+keyLight.shadow.camera.top = 50;
+keyLight.shadow.camera.bottom = -50;
 lightsYawGroup.add(keyLight);
 
 const fillLight = new THREE.PointLight(0x3a5078, 0.18, 40, 1);
