@@ -342,7 +342,8 @@ const previewCanvas = document.getElementById('preview');
 const previewRenderer = new THREE.WebGLRenderer({ canvas: previewCanvas, antialias: false, alpha: false });
 previewRenderer.setPixelRatio(1); // strict 64x64
 previewRenderer.shadowMap.enabled = true;
-previewRenderer.shadowMap.type = THREE.BasicShadowMap;
+    previewRenderer.shadowMap.type = THREE.BasicShadowMap;
+    previewRenderer.shadowMap.autoUpdate = false;
 previewRenderer.setSize(64, 64, false);
 
 const scene = new THREE.Scene();
@@ -386,11 +387,11 @@ const lightsYawGroup = new THREE.Group();
 scene.add(lightsYawGroup);
 
 const keyLight = new THREE.PointLight(0xffe4c0, 1.9, 60, 1.2);
-keyLight.position.set(3.5, 4.5, 5.5);
-keyLight.castShadow = true;
-keyLight.shadow.mapSize.set(8192, 8192);
-keyLight.shadow.bias = -0.0001;
-keyLight.shadow.normalBias = 0.001;
+    keyLight.position.set(3.5, 4.5, 5.5);
+    keyLight.castShadow = true;
+    keyLight.shadow.mapSize.set(8192, 8192);
+    keyLight.shadow.bias = 0;
+    keyLight.shadow.normalBias = 0;
 lightsYawGroup.add(keyLight);
 
 const fillLight = new THREE.PointLight(0x3a5078, 0.18, 40, 1);
