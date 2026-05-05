@@ -212,7 +212,7 @@ canvas#preview {
     <div class="panel-header">Hierarchy</div>
     <div id="tree"></div>
     <div id="tree-actions">
-      <button id="btn-add-bone">+ Bone</button>
+      <button id="btn-add-bone" style="display:none">+ Bone</button>
       <div class="row">
         <select id="prim-type">
           <option value="box">Box</option>
@@ -220,7 +220,7 @@ canvas#preview {
           <option value="cylinder">Cylinder</option>
           <option value="capsule">Capsule</option>
         </select>
-        <button id="btn-add-prim">+ Prim</button>
+        <button id="btn-add-prim" style="display:none">+ Prim</button>
       </div>
     </div>
   </div>
@@ -279,47 +279,17 @@ canvas#preview {
 let nextId = 1;
 function newId(prefix) { return prefix + '_' + (nextId++); }
 
-function makeStarterCharacter() {
-  const bones = [
-    { id: 'bone_1', parentId: null,    length: 0,    name: 'root' },
-    { id: 'bone_2', parentId: 'bone_1', length: 1.1, name: 'neck' },
-    { id: 'bone_3', parentId: 'bone_1', length: 0.9, name: 'arm.R' },
-    { id: 'bone_4', parentId: 'bone_1', length: 0.9, name: 'arm.L' },
-    { id: 'bone_5', parentId: 'bone_1', length: 1.0, name: 'leg.R' },
-    { id: 'bone_6', parentId: 'bone_1', length: 1.0, name: 'leg.L' }
-  ];
-  const primitives = [
-    { id: 'prim_1', boneId: 'bone_1', type: 'box',     size: { l: 0.55, w: 0.95, h: 0.45 }, color: '#aa7755', zOffset: 0,    offsetAlongBone: 0 },
-    { id: 'prim_2', boneId: 'bone_2', type: 'sphere',  size: { r: 0.42 },                   color: '#ddccaa', zOffset: 0,    offsetAlongBone: 1 },
-    { id: 'prim_3', boneId: 'bone_3', type: 'capsule', size: { r: 0.13, l: 0.7 },           color: '#a36a4a', zOffset: 0.18, offsetAlongBone: 0.5 },
-    { id: 'prim_4', boneId: 'bone_4', type: 'capsule', size: { r: 0.13, l: 0.7 },           color: '#a36a4a', zOffset: -0.18,offsetAlongBone: 0.5 },
-    { id: 'prim_5', boneId: 'bone_5', type: 'capsule', size: { r: 0.16, l: 0.85 },          color: '#5a4a78', zOffset: 0.05, offsetAlongBone: 0.5 },
-    { id: 'prim_6', boneId: 'bone_6', type: 'capsule', size: { r: 0.16, l: 0.85 },          color: '#5a4a78', zOffset: -0.05,offsetAlongBone: 0.5 }
-  ];
-  nextId = 7;
-  return { bones: bones, primitives: primitives };
-}
-
-function makeStarterFrame() {
-  return {
-    angles: {
-      bone_1: Math.PI / 2,
-      bone_2: 0,
-      bone_3: -Math.PI / 2 - 0.25,
-      bone_4:  Math.PI / 2 + 0.25,
-      bone_5: -Math.PI / 2 + 0.05,
-      bone_6:  Math.PI / 2 - 0.05 + Math.PI / 2 - Math.PI
-    },
-    rootX: 0, rootY: -1.0, yaw: 0
-  };
-}
-
-function emptyFrame() {
-  return { angles: {}, rootX: 0, rootY: 0, yaw: 0 };
-}
-
-let character = makeStarterCharacter();
-let animation = { fps: 8, frames: [makeStarterFrame()] };
+let character = {
+  primitives: [
+    { id: 'prim_1', type: 'box',     size: { l: 0.6, w: 0.4, h: 0.4 }, color: '#aa7755', x: -0.3, y: 0, zOffset: 0 },
+    { id: 'prim_2', type: 'sphere',  size: { r: 0.42 },                   color: '#ddccaa', x: 0, y: 1.0, zOffset: 0 },
+    { id: 'prim_3', type: 'capsule', size: { r: 0.13, l: 0.7 },           color: '#a36a4a', x: 0.8, y: 0.3, zOffset: 0.18 },
+    { id: 'prim_4', type: 'capsule', size: { r: 0.13, l: 0.7 },           color: '#a36a4a', x: -0.8, y: 0.3, zOffset: -0.18 },
+    { id: 'prim_5', type: 'capsule', size: { r: 0.16, l: 0.85 },          color: '#5a4a78', x: 0.4, y: -0.8, zOffset: 0.05 },
+    { id: 'prim_6', type: 'capsule', size: { r: 0.16, l: 0.85 },          color: '#5a4a78', x: -0.4, y: -0.8, zOffset: -0.05 }
+  ]
+};
+let animation = { fps: 8, frames: [{ yaw: 0 }] };
 let currentFrameIdx = 0;
 let selection = { type: null, id: null };
 let onionLevel = 1;
@@ -453,29 +423,6 @@ function buildPrimMesh(prim, opts) {
 }
 
 // ============================================================
-// FK
-// ============================================================
-function computeTransforms(angles) {
-  const out = {};
-  const childMap = {};
-  for (const b of character.bones) {
-    if (b.parentId) (childMap[b.parentId] = childMap[b.parentId] || []).push(b.id);
-  }
-  function recurse(boneId, baseX, baseY, parentWorldAngle) {
-    const b = character.bones.find(x => x.id === boneId);
-    if (!b) return;
-    const local = (angles && angles[boneId] != null) ? angles[boneId] : 0;
-    const worldAngle = parentWorldAngle + local;
-    const tipX = baseX + Math.cos(worldAngle) * b.length;
-    const tipY = baseY + Math.sin(worldAngle) * b.length;
-    out[boneId] = { baseX, baseY, tipX, tipY, worldAngle, parentWorldAngle };
-    (childMap[boneId] || []).forEach(c => recurse(c, tipX, tipY, worldAngle));
-  }
-  for (const b of character.bones) if (b.parentId === null) recurse(b.id, 0, 0, 0);
-  return out;
-}
-
-// ============================================================
 // SCENE REBUILDS
 // ============================================================
 function clearGroup(g) {
@@ -492,70 +439,19 @@ function clearGroup(g) {
 
 function buildPrimitivesInto(group, frameAngles, opts) {
   opts = opts || {};
-  const T = computeTransforms(frameAngles);
   for (const prim of character.primitives) {
-    const t = T[prim.boneId]; if (!t) continue;
     const mesh = buildPrimMesh(prim, opts);
-    const f = prim.offsetAlongBone || 0;
-    const px = t.baseX + (t.tipX - t.baseX) * f;
-    const py = t.baseY + (t.tipY - t.baseY) * f;
-    mesh.position.set(px, py, prim.zOffset || 0);
-    mesh.rotation.z = t.worldAngle;
+    mesh.position.set(prim.x || 0, prim.y || 0, prim.zOffset || 0);
     group.add(mesh);
   }
 }
 
-function buildOverlayInto(group, frameAngles) {
-  const T = computeTransforms(frameAngles);
-  const lineMat    = new THREE.LineBasicMaterial({ color: 0x4a4a55, depthTest: false, transparent: true, opacity: 0.9 });
-  const lineMatSel = new THREE.LineBasicMaterial({ color: 0xff7a1a, depthTest: false });
-  const tipMat     = new THREE.MeshBasicMaterial({ color: 0xaaaaaa, depthTest: false });
-  const tipMatSel  = new THREE.MeshBasicMaterial({ color: 0xff7a1a, depthTest: false });
-  const tipGeo     = new THREE.SphereGeometry(0.07, 10, 6);
-
-  for (const b of character.bones) {
-    const t = T[b.id]; if (!t) continue;
-    const isSel = (selection.type === 'bone' && selection.id === b.id);
-    if (b.length > 0.001) {
-      const lineGeo = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(t.baseX, t.baseY, 0),
-        new THREE.Vector3(t.tipX, t.tipY, 0)
-      ]);
-      const line = new THREE.Line(lineGeo, isSel ? lineMatSel : lineMat);
-      line.renderOrder = 999; group.add(line);
-    }
-    const tip = new THREE.Mesh(tipGeo, isSel ? tipMatSel : tipMat);
-    const tx = b.length > 0.001 ? t.tipX : t.baseX;
-    const ty = b.length > 0.001 ? t.tipY : t.baseY;
-    tip.position.set(tx, ty, 0);
-    tip.renderOrder = 1000;
-    tip.userData = { kind: 'joint', boneId: b.id };
-    group.add(tip);
-  }
-  // Origin handle: a slightly larger ring you can grab to translate the rig.
-  const ringGeo = new THREE.RingGeometry(0.18, 0.24, 28);
-  const ringMat = new THREE.MeshBasicMaterial({ color: 0x666673, side: THREE.DoubleSide, depthTest: false, transparent: true, opacity: 0.7 });
-  const ring = new THREE.Mesh(ringGeo, ringMat);
-  ring.renderOrder = 998;
-  ring.userData = { kind: 'origin' };
-  group.add(ring);
-  // tiny crosshair
-  const crossGeo = new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(-0.12, 0, 0), new THREE.Vector3(0.12, 0, 0),
-    new THREE.Vector3(0, -0.12, 0), new THREE.Vector3(0, 0.12, 0)
-  ]);
-  const cross = new THREE.LineSegments(crossGeo, new THREE.LineBasicMaterial({ color: 0x666673, depthTest: false, transparent: true, opacity: 0.6 }));
-  cross.renderOrder = 998;
-  group.add(cross);
-}
-
 function rebuildAll() {
   clearGroup(currentRigGroup);
-  clearGroup(currentOverlayGroup);
+  clearGroup(currentRigGroup);
   ghostGroups.forEach(clearGroup);
 
-  buildPrimitivesInto(currentRigGroup, curFrame().angles);
-  buildOverlayInto(currentOverlayGroup, curFrame().angles);
+  buildPrimitivesInto(currentRigGroup, curFrame());
 
   // Ghosts: prev frame, then next frame
   const ghostFrames = [];
@@ -567,7 +463,7 @@ function rebuildAll() {
   }
   ghostFrames.forEach((gf, i) => {
     if (i >= ghostGroups.length) return;
-    buildPrimitivesInto(ghostGroups[i], gf.frame.angles, { ghost: true, ghostColor: gf.color, ghostOpacity: gf.opacity });
+    buildPrimitivesInto(ghostGroups[i], gf.frame, { ghost: true, ghostColor: gf.color, ghostOpacity: gf.opacity });
     ghostGroups[i].userData.frame = gf.frame;
   });
   for (let i = ghostFrames.length; i < ghostGroups.length; i++) ghostGroups[i].userData.frame = null;
@@ -580,8 +476,6 @@ function updateGroupTransforms() {
 
   currentRigGroup.rotation.y = f.yaw || 0;
   currentRigGroup.position.set(f.rootX || 0, f.rootY || 0, 0);
-  currentOverlayGroup.rotation.y = f.yaw || 0;
-  currentOverlayGroup.position.set(f.rootX || 0, f.rootY || 0, 0);
 
   ghostGroups.forEach(g => {
     const gf = g.userData.frame;
@@ -635,10 +529,7 @@ function mouseToNDC(e) {
 function pickAt(e) {
   const ndc = mouseToNDC(e);
   raycaster.setFromCamera(ndc, camera);
-  const overlayHits = raycaster.intersectObjects(currentOverlayGroup.children, false);
-  for (const h of overlayHits) {
-    if (h.object.userData && h.object.userData.kind === 'joint') return { type: 'joint', boneId: h.object.userData.boneId };
-    if (h.object.userData && h.object.userData.kind === 'origin') return { type: 'origin' };
+  
   }
   const rigHits = raycaster.intersectObjects(currentRigGroup.children, false);
   for (const h of rigHits) {
@@ -681,86 +572,20 @@ canvas.addEventListener('mousedown', (e) => {
     return;
   }
   if (pick.type === 'origin') {
-    const f = curFrame();
-    const w = mouseToWorldXY(e);
-    if (!w) return;
-    dragging = { kind: 'origin', offsetX: f.rootX - w.x, offsetY: f.rootY - w.y };
-    canvas.style.cursor = 'move';
-    return;
-  }
-  if (pick.type === 'joint') {
-    const bone = character.bones.find(b => b.id === pick.boneId);
-    if (!bone) return;
-    selection = { type: 'bone', id: bone.id };
-    rebuildAll(); renderTree(); renderProps();
-    if (bone.length < 0.001 && !e.shiftKey) {
-      // length-0 bone with regular drag: nothing to rotate. Allow shift+drag to grow it.
-      if (!e.shiftKey) return;
-    }
-    const T = computeTransforms(curFrame().angles);
-    const t = T[bone.id]; if (!t) return;
-    dragging = {
-      kind: e.shiftKey ? 'resize' : 'rotate',
-      boneId: bone.id,
-      baseX: t.baseX, baseY: t.baseY,
-      parentWorldAngle: t.parentWorldAngle,
-      currentWorldAngle: t.worldAngle
-    };
-    canvas.style.cursor = e.shiftKey ? 'ns-resize' : 'grabbing';
-    return;
-  }
-  if (pick.type === 'primitive') {
+
+window.addEventListener('mousemove', (e) => {
+  // No dragging
+});
+
+window.addEventListener('mouseup', () => {
+  dragging = null;
+  canvas.style.cursor = '';
+});
     selection = { type: 'primitive', id: pick.id };
     rebuildAll(); renderTree(); renderProps();
   }
 });
 
-window.addEventListener('mousemove', (e) => {
-  if (!dragging) return;
-  if (dragging.kind === 'origin') {
-    const w = mouseToWorldXY(e); if (!w) return;
-    const f = curFrame();
-    f.rootX = w.x + dragging.offsetX;
-    f.rootY = w.y + dragging.offsetY;
-    return; // no rebuild needed; updateGroupTransforms handles it next tick
-  }
-  const local = mouseToRigLocal(e); if (!local) return;
-  const dx = local.x - dragging.baseX, dy = local.y - dragging.baseY;
-  if (dragging.kind === 'rotate') {
-    if (dx * dx + dy * dy < 1e-6) return;
-    let a = Math.atan2(dy, dx) - dragging.parentWorldAngle;
-    while (a > Math.PI) a -= 2 * Math.PI;
-    while (a < -Math.PI) a += 2 * Math.PI;
-    curFrame().angles[dragging.boneId] = a;
-    rebuildAll();
-    if (selection.type === 'bone' && selection.id === dragging.boneId) {
-      const sl = document.getElementById('bn-ang'), lbl = document.getElementById('bn-ang-v');
-      if (sl) sl.value = (a * 180 / Math.PI).toFixed(1);
-      if (lbl) lbl.textContent = (a * 180 / Math.PI).toFixed(1) + '°';
-    }
-  } else if (dragging.kind === 'resize') {
-    // Project cursor onto bone direction. Length = max(0.05, projection).
-    const dirX = Math.cos(dragging.currentWorldAngle);
-    const dirY = Math.sin(dragging.currentWorldAngle);
-    const proj = dx * dirX + dy * dirY;
-    const bone = character.bones.find(b => b.id === dragging.boneId);
-    if (!bone) return;
-    bone.length = Math.max(0.05, proj);
-    rebuildAll();
-    if (selection.type === 'bone' && selection.id === dragging.boneId) {
-      const sl = document.getElementById('bn-len'), lbl = document.getElementById('bn-len-v');
-      if (sl) sl.value = bone.length.toFixed(2);
-      if (lbl) lbl.textContent = bone.length.toFixed(2);
-    }
-  }
-});
-
-window.addEventListener('mouseup', () => {
-  if (dragging && dragging.kind === 'resize') {
-    // Resize finished — refresh frame strip to reflect any visible change
-    renderFrameStrip();
-  }
-  dragging = null;
   canvas.style.cursor = '';
 });
 
@@ -769,104 +594,15 @@ window.addEventListener('mouseup', () => {
 // ============================================================
 function renderTree() {
   const el = document.getElementById('tree'); el.innerHTML = '';
-  const childMap = {}; const roots = [];
-  for (const b of character.bones) {
-    if (b.parentId === null) roots.push(b);
-    else (childMap[b.parentId] = childMap[b.parentId] || []).push(b);
-  }
-  const primMap = {};
-  for (const p of character.primitives) (primMap[p.boneId] = primMap[p.boneId] || []).push(p);
-  function add(b, depth) {
-    const item = document.createElement('div');
-    item.className = 'tree-item tree-bone';
-    if (selection.type === 'bone' && selection.id === b.id) item.classList.add('selected');
-    item.style.paddingLeft = (10 + depth * 12) + 'px';
-    item.innerHTML = '<span class="icon">▸</span><span>' + (b.name || b.id) + '</span>';
-    item.addEventListener('click', () => { selection = { type: 'bone', id: b.id }; rebuildAll(); renderTree(); renderProps(); });
-    el.appendChild(item);
-    (primMap[b.id] || []).forEach(p => {
-      const pi = document.createElement('div');
-      pi.className = 'tree-item tree-prim';
-      if (selection.type === 'primitive' && selection.id === p.id) pi.classList.add('selected');
-      pi.style.paddingLeft = (10 + (depth + 1) * 12) + 'px';
-      pi.innerHTML = '<span class="icon">●</span><span class="swatch" style="background:' + p.color + '"></span><span>' + p.type + '</span>';
-      pi.addEventListener('click', (ev) => { ev.stopPropagation(); selection = { type: 'primitive', id: p.id }; rebuildAll(); renderTree(); renderProps(); });
-      el.appendChild(pi);
-    });
-    (childMap[b.id] || []).forEach(c => add(c, depth + 1));
-  }
-  roots.forEach(r => add(r, 0));
+  character.primitives.forEach(p => {
+    const pi = document.createElement('div');
+    pi.className = 'tree-item tree-prim';
+    if (selection.type === 'primitive' && selection.id === p.id) pi.classList.add('selected');
+    pi.innerHTML = '<span class="icon">●</span><span class="swatch" style="background:' + p.color + '"></span><span>' + p.type + '</span>';
+    pi.addEventListener('click', (ev) => { ev.stopPropagation(); selection = { type: 'primitive', id: p.id }; rebuildAll(); renderTree(); renderProps(); });
+    el.appendChild(pi);
+  });
 }
-
-// ============================================================
-// UI: PROPERTIES
-// ============================================================
-function isDescendant(candidateId, ancestorId) {
-  let cur = character.bones.find(b => b.id === candidateId);
-  while (cur && cur.parentId) {
-    if (cur.parentId === ancestorId) return true;
-    cur = character.bones.find(b => b.id === cur.parentId);
-  }
-  return false;
-}
-function deleteBoneAndDescendants(boneId) {
-  const toDelete = new Set([boneId]);
-  let added = true;
-  while (added) {
-    added = false;
-    for (const b of character.bones) {
-      if (b.parentId && toDelete.has(b.parentId) && !toDelete.has(b.id)) { toDelete.add(b.id); added = true; }
-    }
-  }
-  character.bones = character.bones.filter(b => !toDelete.has(b.id));
-  character.primitives = character.primitives.filter(p => !toDelete.has(p.boneId));
-  // Strip from every frame's angles
-  for (const f of animation.frames) toDelete.forEach(id => delete f.angles[id]);
-}
-
-function bindRange(inputId, labelId, fn) {
-  const input = document.getElementById(inputId);
-  const label = document.getElementById(labelId);
-  if (!input) return;
-  input.addEventListener('input', (e) => { const v = parseFloat(e.target.value); if (label) label.textContent = v.toFixed(2); fn(v); });
-}
-
-function renderProps() {
-  const el = document.getElementById('props'); el.innerHTML = '';
-  if (!selection.type) {
-    el.innerHTML = '<div class="empty-state">Click a joint or primitive<br>to edit.<br><br><b>drag</b> joint to rotate<br><b>shift+drag</b> joint to resize<br><b>drag</b> origin ring to translate<br><br>← → to scrub frames<br>space to play</div>';
-    return;
-  }
-  if (selection.type === 'bone') renderBoneProps(el);
-  else if (selection.type === 'primitive') renderPrimProps(el);
-}
-
-function renderBoneProps(el) {
-  const b = character.bones.find(x => x.id === selection.id); if (!b) return;
-  const ang = curFrame().angles[b.id] || 0;
-  const angDeg = ang * 180 / Math.PI;
-  const parentOpts = [
-    '<option value="">— (root)</option>',
-    ...character.bones.filter(x => x.id !== b.id && !isDescendant(x.id, b.id))
-      .map(p => '<option value="' + p.id + '"' + (p.id === b.parentId ? ' selected' : '') + '>' + (p.name || p.id) + '</option>')
-  ].join('');
-  el.innerHTML =
-    '<div class="prop-row"><label>Name</label><input type="text" id="bn-name" value="' + (b.name || '') + '"></div>' +
-    '<div class="prop-row"><label>Length<span class="val" id="bn-len-v">' + b.length.toFixed(2) + '</span></label><input type="range" id="bn-len" min="0" max="3" step="0.01" value="' + b.length + '"></div>' +
-    '<div class="prop-row"><label>Local Angle (this frame)<span class="val" id="bn-ang-v">' + angDeg.toFixed(1) + '°</span></label><input type="range" id="bn-ang" min="-180" max="180" step="0.5" value="' + angDeg.toFixed(2) + '"></div>' +
-    '<div class="prop-row"><label>Parent</label><select id="bn-parent">' + parentOpts + '</select></div>' +
-    (b.parentId !== null
-      ? '<div class="prop-row"><button id="bn-delete" class="danger">Delete bone &amp; descendants</button></div>'
-      : '<div class="prop-row" style="color:var(--text-dim);font-style:italic;font-size:10px">Root bone — cannot delete.</div>');
-  document.getElementById('bn-name').addEventListener('input', (e) => { b.name = e.target.value; renderTree(); });
-  document.getElementById('bn-len').addEventListener('input', (e) => { b.length = parseFloat(e.target.value); document.getElementById('bn-len-v').textContent = b.length.toFixed(2); rebuildAll(); });
-  document.getElementById('bn-ang').addEventListener('input', (e) => { const deg = parseFloat(e.target.value); curFrame().angles[b.id] = deg * Math.PI / 180; document.getElementById('bn-ang-v').textContent = deg.toFixed(1) + '°'; rebuildAll(); });
-  document.getElementById('bn-parent').addEventListener('change', (e) => { b.parentId = e.target.value || null; rebuildAll(); renderTree(); });
-  if (b.parentId !== null) document.getElementById('bn-delete').addEventListener('click', () => {
-    if (!confirm('Delete this bone and everything attached?')) return;
-    deleteBoneAndDescendants(b.id);
-    selection = { type: null, id: null };
-    rebuildAll(); renderTree(); renderProps();
   });
 }
 
@@ -919,8 +655,7 @@ function renderPrimProps(el) {
   }
   bindRange('pr-oa', 'pr-oa-v', v => { p.offsetAlongBone = v; rebuildAll(); });
   bindRange('pr-z',  'pr-z-v',  v => { p.zOffset = v; rebuildAll(); });
-  document.getElementById('pr-bone').addEventListener('change', (e) => { p.boneId = e.target.value; rebuildAll(); renderTree(); });
-  document.getElementById('pr-delete').addEventListener('click', () => {
+    document.getElementById('pr-delete').addEventListener('click', () => {
     character.primitives = character.primitives.filter(x => x.id !== p.id);
     selection = { type: null, id: null };
     rebuildAll(); renderTree(); renderProps();
@@ -1024,24 +759,9 @@ document.getElementById('btn-add-bone').addEventListener('click', () => {
   rebuildAll(); renderTree(); renderProps();
 });
 
-document.getElementById('btn-add-prim').addEventListener('click', () => {
-  let boneId;
-  if (selection.type === 'bone') boneId = selection.id;
-  else if (selection.type === 'primitive') {
-    const p = character.primitives.find(x => x.id === selection.id);
-    boneId = p ? p.boneId : (character.bones[0] && character.bones[0].id);
-  } else boneId = character.bones[0] && character.bones[0].id;
-  if (!boneId) return;
-  const type = document.getElementById('prim-type').value;
-  const id = newId('prim');
-  let size, offset = 0.5;
-  if (type === 'box') size = { l: 0.5, w: 0.4, h: 0.4 };
-  else if (type === 'sphere') { size = { r: 0.3 }; offset = 1; }
-  else size = { r: 0.18, l: 0.6 };
-  character.primitives.push({ id: id, boneId: boneId, type: type, size: size, color: '#cccccc', zOffset: 0, offsetAlongBone: offset });
-  selection = { type: 'primitive', id: id };
-  rebuildAll(); renderTree(); renderProps();
-});
+// document.getElementById('btn-add-prim').addEventListener('click', () => {
+//   // Removed - no bones  
+// });
 
 document.getElementById('btn-new').addEventListener('click', () => {
   if (!confirm('Discard the current project?')) return;
@@ -1072,8 +792,7 @@ document.getElementById('btn-save-anim').addEventListener('click', () => {
   const name = (character.bones.find(b => b.parentId === null) || {}).name || 'character';
   downloadJSON(data, name.replace(/\s+/g, '_') + '.anim.json');
 });
-document.getElementById('btn-load').addEventListener('click', () => document.getElementById('file-input').click());
-
+// btn-load handler removed
 document.getElementById('file-input').addEventListener('change', (e) => {
   const file = e.target.files[0]; if (!file) return;
   const reader = new FileReader();
